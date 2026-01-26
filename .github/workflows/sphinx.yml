@@ -30,7 +30,7 @@ jobs:
 
     steps:
       # https://github.com/marketplace/actions/checkout
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -124,7 +124,7 @@ jobs:
           touch _gh-pages/.nojekyll
 
       # Save artifact for the next step.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         with:
           name: gh-pages-build
@@ -142,7 +142,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && ( env.MULTIBRANCH == 'true' || github.ref == format('refs/heads/{0}', env.DEFAULT_BRANCH )) }}
         with:
           name: gh-pages-build
@@ -157,7 +157,7 @@ jobs:
       # https://github.com/peaceiris/actions-gh-pages
       - name: Deploy
         # uses: peaceiris/actions-gh-pages@v4
-        uses: peaceiris/actions-gh-pages@4b09552702d0b65573696410d4707c765da2630b
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
         if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && ( env.MULTIBRANCH == 'true' || github.ref == format('refs/heads/{0}', env.DEFAULT_BRANCH )) }}
         with:
           publish_branch: gh-pages
