@@ -17,7 +17,7 @@
 project = "Introduction to PyTorch distributed training frameworks"
 # FIXME: insert correct author
 author = "The contributors"
-copyright = f"2025, Mimer AI Factory, {Francesco Fiusco}"
+copyright = f"2025, Mimer AI Factory, Francesco Fiusco"
 
 # FIXME: github organization / user that the repository belongs to
 github_user = "mimer-ai"
