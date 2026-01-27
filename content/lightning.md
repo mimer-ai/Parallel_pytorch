@@ -19,24 +19,33 @@
 
 [PyTorch Lightning](https://lightning.ai/docs/pytorch/stable/) is a lightweight
 extension of PyTorch that provides structure, automation, and robustness while
-keeping full flexibility. It does not replace PyTorch—you still write PyTorch
-models, layers, and logic—but it removes much of the repetitive “glue code”
-around them.
+keeping full flexibility. It does not replace PyTorch, in the sense that you
+still write PyTorch models, layers, and logic, but it removes much of the
+repetitive “glue code” around them. Moreover, it simplifies parallelisation
+over multiple GPUs, requiring virtually no changes to the code if using
+Lightning types; different parallelisation strategies such as DeepSpeed, DDP
+and FSDP are readily available and require minimal configuration.
+In order to achieve this, Lightning requires the developer to wrap their
+network architecture and logic into Lightning types. This also benefits
+development since it improves readability of the code, clearly separating ML
+logic from engineering.
 
 Lightning focuses on three core ideas:
 
 1. **Organize code cleanly**  
-   Lightning separates the core components of a research project:
+   Lightning separates the core components of a deep learning project
+operations:
    - Models  
    - Data loading  
    - Training loop behavior  
    - Logging & checkpointing  
    - Distributed execution  
 
-   This makes your code modular, readable, and easier to share across collaborators and projects.
+   This helps keeping the code modular, readable and more reusable.
 
-2. **Automate engineering, keep research flexible**  
-   Researchers should focus on the model and experiments, not device placement or multiprocessing.  
+2. **Automate engineering, keep architecture flexible**  
+   The developer can focus on the model and experiments, while device
+placement or multiprocessing are transparently handled by Lightning.
    Lightning handles:
    - Training and validation loops  
    - Mixed precision  
@@ -46,51 +55,18 @@ Lightning focuses on three core ideas:
    - Checkpointing  
    - Logging  
 
-   Meanwhile, you can still dive into raw PyTorch operations whenever needed.
-
 3. **Make code portable across hardware and environments**  
    With Lightning, the same script can run:
    - on CPU  
    - on a single GPU  
-   - on multiple GPUs using DDP  
-   - on large models using FSDP  
-   - on multi‑node clusters  
-   - inside SLURM job scripts  
-   - on cloud platforms  
+   - on multiple GPUs using DDP, FSDP or ZeRO
 
-   Switching execution modes becomes a matter of changing a command‑line flag rather than rewriting your whole training script.
+   Switching execution modes becomes a matter of changing a command‑line flag
+   rather than rewriting the whole training script.
 
----
+### Lightning building blocks
 
-### Why Lightning is useful for research
-
-Lightning solves practical problems that appear in every research project:
-
-**Reduced boilerplate**  
-Common mistakes—forgetting `model.train()`, mismatching device placements, mishandling gradients—are eliminated because Lightning handles these reliably.
-
-**Reproducibility**  
-Lightning enforces structure. Hyperparameters, configurations, and behaviors are stored consistently. This makes it easier to reproduce old experiments months later.
-
-**Cleaner collaboration**  
-Students, interns, and collaborators can read and modify models without digging through training loop details.  
-Your “model code” stops being mixed with logging, checkpointing, or GPU logic.
-
-**Safe scaling**  
-Distributed training in raw PyTorch requires manually handling:
-
-- process groups  
-- master addresses  
-- NCCL configuration  
-- multi‑GPU synchronization  
-
-Lightning makes this as simple as:
-
-`strategy="ddp", devices=4`
-
-The underlying machinery is still the same, but Lightning configures it correctly and reliably.
-
----
+The core API of Lightning rotates around two objects:
 
 ### Why Lightning is great for HPC and SLURM environments
 
