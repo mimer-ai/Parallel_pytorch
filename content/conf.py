@@ -21,7 +21,7 @@ copyright = f"2025, Mimer AI Factory, Francesco Fiusco"
 
 # FIXME: github organization / user that the repository belongs to
 github_user = "mimer-ai"
-github_repo_name = ""  # auto-detected from dirname if blank
+github_repo_name = "Lightning_episode"  # auto-detected from dirname if blank
 github_version = "main"
 conf_py_path = "/content/"  # with leading and trailing slash
 
