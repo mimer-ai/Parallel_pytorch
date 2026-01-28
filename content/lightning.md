@@ -66,7 +66,78 @@ placement or multiprocessing are transparently handled by Lightning.
 
 ### Lightning building blocks
 
-The core API of Lightning rotates around two objects:
+The core API of Lightning rotates around two objects: `LightningModule` and
+`Trainer`. `LightningModule`  describes the architecture of the network,
+including forward pass, validation and test loops, optimisers and LR
+schedulers. Conversely, `Trainer` handles the "engineering" side of things:
+running training, validation and test dataloaders, calling callbacks at the
+right time (e.g. checkpointing, logging), transparently handling device
+placement following the prescribed parallelisation strategy. In particular,
+`Callback`s are used to inject custom, non-essential code at appropriate times.
+This can be very useful for progress tracking, logging and checkpointing.
+
+:::{demo}
+
+In this example, we will build a simple multilayer perceptron to classify
+flowers belonging to the Iris dataset based on a set of measurements
+(petal/sepal measurements).
+
+```python
+import torch 
+import torch.nn as nn 
+import torch.nn.functional as F 
+from torch.optim import Adam 
+import lightning as L 
+from lightning.pytorch.callbacks import Callback 
+```
+
+Our basic imports, plus `Lighthing` and its `Callback`.
+
+```python
+class IrisClassifier(L.LightningModule):
+    def __init__(self):
+        super().__init__()
+        # Input: 4 features (sepal/petal measurements)
+        # Hidden: 16 neurons
+        # Output: 3 classes (Setosa, Versicolour, Virginica)
+        self.layer_1 = nn.Linear(4, 16)
+        self.layer_2 = nn.Linear(16, 3)
+
+    def forward(self, x):
+        # Standard Forward Pass
+        x = F.relu(self.layer_1(x))
+        x = self.layer_2(x)
+        return x
+
+    def training_step(self, batch, batch_idx):
+        # 1. Unpack batch
+        # Tabular data usually comes as (features, labels)
+        x, y = batch
+        
+        # 2. Forward pass
+        logits = self(x)
+        
+        # 3. Compute Loss
+        # CrossEntropyLoss expects logits for multi-class classification
+        loss = F.cross_entropy(logits, y)
+        
+        # 4. Log the loss (so our Callback can see it later!)
+        self.log("train_loss", loss)
+        
+        return loss
+
+    def configure_optimizers(self):
+        return Adam(self.parameters(), lr=0.01)
+```
+
+Here is all that pertains architecture and behaviour of the network:
+
+- In the constructor, we define the network itself (input layer + 16 hidden neurons + output layer)
+- The `forward()` method describes the forward pass, which in this case is just a ReLU of the first layer and the output
+- The `training_step` method defines the core logic of each training step: get the features and labels from the batch, do the forward pass, compute the loss and log it
+-
+
+:::
 
 ### Why Lightning is great for HPC and SLURM environments
 
