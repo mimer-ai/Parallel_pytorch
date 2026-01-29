@@ -80,7 +80,8 @@ This can be very useful for progress tracking, logging and checkpointing.
 
 In this example, we will build a simple multilayer perceptron to classify
 flowers belonging to the Iris dataset based on a set of measurements
-(petal/sepal measurements).
+(petal/sepal measurements). We will examine an example script creating this
+neural network one snippet at a time.
 
 ```python
 import torch 
@@ -135,65 +136,64 @@ Here is all that pertains architecture and behaviour of the network:
 - In the constructor, we define the network itself (input layer + 16 hidden neurons + output layer)
 - The `forward()` method describes the forward pass, which in this case is just a ReLU of the first layer and the output
 - The `training_step` method defines the core logic of each training step: get the features and labels from the batch, do the forward pass, compute the loss and log it
--
+- The `configure_optimizers` step schedules an Adam optimiser with a certain learning rate.
+
+```python
+from sklearn.datasets import load_iris
+from torch.utils.data import TensorDataset, DataLoader
+
+iris = load_iris()
+X = torch.tensor(iris.data, dtype=torch.float32) # Features
+y = torch.tensor(iris.target, dtype=torch.long)  # Labels (0, 1, 2)
+
+dataset = TensorDataset(X, y)
+train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
+
+model = IrisClassifier()
+
+# Initialize Trainer with the Callback
+# We plug a "Spy" Callback into the callbacks list
+spy_callback = TrainingSpy()
+trainer = L.Trainer(max_epochs=10, callbacks=[spy_callback], accelerator="gpu")
+
+# Train
+trainer.fit(model, train_loader)
+```
+
+The first part of the snippet loads the Iris dataset from `sklearn` (not
+crucial, just an easily accessible source). It then converts it into a format
+digestible by PyTorch. The `IrisClassifier` model we created above is then
+instantiated.
+The Lightning `Trainer` object takes care of the *engineering* of
+the flow: sets a number of epochs, which accelerator to use and possibly number
+of devices/nodes over which the job can be parallelised with a certain
+strategy. Note also the inclusion of a `spy_callback`: this exemplifies the use
+of callbacks to trigger the execution of arbitrary code at certain moments of
+the training cycle. In this case, our own `TrainingSpy` looks like the
+following:
+
+```python
+class TrainingSpy(Callback):
+    def on_train_epoch_end(self, trainer, pl_module):
+        # This runs automatically at the end of every epoch
+        # We access the logged metrics from the module via trainer.callback_metrics
+        loss = trainer.callback_metrics.get("train_loss")
+        print(f"Spy Report: Epoch {trainer.current_epoch} ended. Loss: {loss:.4f}")
+```
+
+Lightning provides some plumbing to create `Callback`s and even some specific
+types (learning rate schedulers, gradient accumulation, etc.). In the snippet
+above, the training loss is printed after every epoch. A number of trigger
+events are available (fit end, fit start, checkpoint loading, test epoch
+start...).
 
 :::
 
-### Why Lightning is great for HPC and SLURM environments
-
-Clusters come with additional challenges:
-
-- You must handle environment variables for distributed communication.  
-- You often need multi-node multi-GPU launches.  
-- You want reproducible job scripts that don’t depend on internal PyTorch details.  
-
-Lightning abstracts this away.
-
-Your *training script stays identical* whether you run it:
-
-- interactively  
-- via `srun`  
-- via `sbatch`  
-- on 1 node  
-- on 8 nodes  
-- with DDP or FSDP  
-
-Your SLURM scripts simply launch the trainer with the appropriate strategy.
-
-This dramatically reduces maintenance and prevents subtle bugs caused by manual multiprocess setup.
-
----
-
-### How we will use Lightning in this lesson
-
-During this lesson, you will build two full training pipelines:
-
-- **MNIST** (simple MLP)
-- **CIFAR10** (CNN or ResNet)
-
-You will run them:
-
-- On CPU  
-- On one GPU  
-- On multiple GPUs using DDP  
-- Using FSDP with different wrapping policies  
-- On an HPC cluster using SLURM job scripts  
-
-You will learn how to structure a Lightning project so that:
-
-- Your code remains clean  
-- Your experiments are reproducible  
-- Scaling up requires minimal changes  
-- You understand what Lightning is doing under the hood  
-
-The goal is to give you the tools to write deep learning code that is:
-
-- robust  
-- scalable  
-- maintainable  
-- ready for production or research at scale  
-
-By the end, you should be able to take any PyTorch project and convert it into a Lightning-based design suitable for distributed training and HPC environments.
+Lightning works extremely well in SLURM-like environments since the number of
+nodes/devices and the parallelisation strategy can be passed as arguments to
+the `Trainer` object and can be fed from SLURM environmental variables
+(`$SLURM_GPUS_PER_NODE`, `$SLURM_NNODES`). This effectively means that both the
+Python script itself and the submit script can stay the same.
 
 ## Exercises: description
 
@@ -212,5 +212,4 @@ hint of what comes next.
 
 ## See also
 
-- Other relevant links
-- Other link
+- Pytorch Lightning [documentation](https://lightning.ai/docs/pytorch/stable/)
