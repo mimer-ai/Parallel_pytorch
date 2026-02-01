@@ -226,8 +226,6 @@ use a Lightning data module:
 :::{demo}
 
 ```python
-
-
 class IrisDataModule(L.LightningDataModule):
 
     def __init__(
@@ -320,7 +318,6 @@ the `Trainer` object and can be fed from SLURM environmental variables
 Python script itself and the submit script can stay the same. For example, the number of epochs, nodes, GPUs per node and parallelisation strategy can be parsed as arguments:
 
 ```python
-
 from pytorch_lightning.strategies import FSDPStrategy
 
 parser = argparse.ArgumentParser()
@@ -356,7 +353,7 @@ else:
     strategy = args.strategy 
 ```
 
-and then passed to the Trainer object
+and then passed to the Trainer object:
 
 ```python
 trainer = L.Trainer(
@@ -370,13 +367,22 @@ trainer = L.Trainer(
 
 ## Exercises
 
-:::{exercise} Exercise Topic-1: imperative description of exercise
-Exercise text here.
-:::
+::::{exercise} ResNet50 trained on the Cifar10 dataset
+In the following example, a ResNet50 is trained on the Cifar10 image dataset to classify images into 10 categories. Fill in the `#TODO` lines and submit using the script at {download}`code/cifar10/job.slurm`. The submit script also allows you to test different parallelisation strategies.
+
+```{literalinclude} code/cifar10/cifar10_lightning_skeleton.py
+:language python
+```
 
 :::{solution}
-Solution text here
+
+```{literalinclude} code/cifar10/cifar10_lightning_solution.py
+:language python
+```
+
 :::
+
+::::
 
 ## Summary
 
