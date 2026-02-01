@@ -139,12 +139,12 @@ Here is all that pertains architecture and behaviour of the network:
 - The `configure_optimizers` step schedules an Adam optimiser with a certain learning rate.
 
 ```python
-from sklearn.datasets import load_iris
+import numpy as np
 from torch.utils.data import TensorDataset, DataLoader
 
-iris = load_iris()
-X = torch.tensor(iris.data, dtype=torch.float32) # Features
-y = torch.tensor(iris.target, dtype=torch.long)  # Labels (0, 1, 2)
+iris = np.load("./data/iris.npz")
+X = torch.tensor(iris["X"], dtype=torch.float32) # Features
+y = torch.tensor(iris["y"], dtype=torch.long)  # Labels (0, 1, 2)
 
 dataset = TensorDataset(X, y)
 train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
@@ -153,8 +153,8 @@ model = IrisClassifier()
 
 # Initialize Trainer with the Callback
 # We plug a "Spy" Callback into the callbacks list
-spy_callback = TrainingSpy()
-trainer = L.Trainer(max_epochs=10, callbacks=[spy_callback], accelerator="gpu")
+logger_callback = TrainingLogger()
+trainer = L.Trainer(max_epochs=10, callbacks=[logger_callback], accelerator="gpu")
 
 # Train
 trainer.fit(model, train_loader)
@@ -167,13 +167,13 @@ instantiated.
 The Lightning `Trainer` object takes care of the *engineering* of
 the flow: sets a number of epochs, which accelerator to use and possibly number
 of devices/nodes over which the job can be parallelised with a certain
-strategy. Note also the inclusion of a `spy_callback`: this exemplifies the use
+strategy. Note also the inclusion of a `logger_callback`: this exemplifies the use
 of callbacks to trigger the execution of arbitrary code at certain moments of
-the training cycle. In this case, our own `TrainingSpy` looks like the
+the training cycle. In this case, our own `TrainingLogger` looks like the
 following:
 
 ```python
-class TrainingSpy(Callback):
+class TrainingLogger(Callback):
     def on_train_epoch_end(self, trainer, pl_module):
         # This runs automatically at the end of every epoch
         # We access the logged metrics from the module via trainer.callback_metrics
@@ -189,13 +189,186 @@ start...).
 
 :::
 
+### Lightning data modules
+
+When training neural networks in PyTorch, it is usually needed to find/download
+the dataset, load it from disk, doing train/validation/test splits and a number
+of other preprocessing steps. In the previous example, these steps were
+performed in the launching snippet. In order to improve code organisation and
+reusability, Lightning introduces a `LightningDataModule`, which takes care of
+all these steps and returns the correct torch Dataloaders. A generic
+`LightningDataModule` features a number of hooks:
+
+```python
+class DataModule(L.LightningDataModule):
+  def prepare_data(self):
+    ...
+  def setup(self, stage=None):
+    ...
+  def train_dataloader(self):
+    ...
+  def val_dataloader(self):
+    ...
+
+```
+
+- `prepare_data()` runs once and is usually used to download and/or check
+files. It runs only on one process, even if multiple GPUs are used.
+- `setup(stage)` runs on each rank and loads arrays and creates the datasets.
+The `stage` parameter can be used to prepare data for different steps of the
+training lifecycle (fit, validate, predict, test)
+- `train_dataloader(), val_dataloader(), test_dataloader()` return PyTorch
+dataloaders for the different splits.
+
+In the next example, we can see how to refactor the Iris training snippet to
+use a Lightning data module:
+
+:::{demo}
+
+```python
+
+
+class IrisDataModule(L.LightningDataModule):
+
+    def __init__(
+        self,
+        data_dir = "./data",
+        batch_size = 16,
+        num_workers = 0,
+        val_size = 0.2,
+        random_state = 42,
+        shuffle = True,
+    ):
+        super().__init__()
+        self.data_dir = data_dir
+        self.data_file = os.path.join(self.data_dir, "iris.npz")
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.val_size = val_size
+        self.random_state = random_state
+        self.shuffle = shuffle
+
+        self.train_ds = None
+        self.val_ds = None
+
+        self.save_hyperparameters(ignore=["num_workers"])
+
+    def prepare_data(self):
+        if not os.path.exists(self.data_file):
+            raise FileNotFoundError(
+                f"Expected dataset at {self.data_file}. "
+                f"Run the download script provided to create it."
+            )
+
+    def setup(self, stage=None):
+        data = np.load(self.data_file)
+        X = data["X"].astype(np.float32)   # shape (150, 4)
+        y = data["y"].astype(np.int64)     # shape (150,)
+
+        # Train/val split (stratified to keep class balance)
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y, test_size=self.val_size, random_state=self.random_state, stratify=y
+        )
+
+        # Convert to tensors
+        X_train = torch.from_numpy(X_train)
+        y_train = torch.from_numpy(y_train)
+        X_val = torch.from_numpy(X_val)
+        y_val = torch.from_numpy(y_val)
+
+        self.train_ds = TensorDataset(X_train, y_train)
+        self.val_ds = TensorDataset(X_val, y_val)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=self.shuffle,
+            num_workers=self.num_workers,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+        )
+```
+
+Now to train the network:
+
+```python
+# Assume that IrisClassifier and TrainingLogger are available 
+
+dm = IrisDataModule(data_dir="./data", batch_size=16, val_size=0.2, random_state=42)
+logger_callback = TrainingLogger()
+trainer = L.Trainer(max_epochs=10, callbacks=[logger_callback], accelerator="gpu")
+model = IrisClassifier()
+
+trainer.fit(model, datamodule=dm)
+```
+
+The whole script can be found at {download}`code/iris/iris_example.py` and the submit script at {download}`code/job.slurm`.
+
+:::
+
 Lightning works extremely well in SLURM-like environments since the number of
 nodes/devices and the parallelisation strategy can be passed as arguments to
 the `Trainer` object and can be fed from SLURM environmental variables
 (`$SLURM_GPUS_PER_NODE`, `$SLURM_NNODES`). This effectively means that both the
-Python script itself and the submit script can stay the same.
+Python script itself and the submit script can stay the same. For example, the number of epochs, nodes, GPUs per node and parallelisation strategy can be parsed as arguments:
 
-## Exercises: description
+```python
+
+from pytorch_lightning.strategies import FSDPStrategy
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--gpus', default=2, type=int, metavar='N',
+                        help='number of GPUs per node')
+parser.add_argument('--nodes', default=1, type=int, metavar='N',
+                        help='number of nodes')
+parser.add_argument('--epochs', default=2, type=int, metavar='N',
+                        help='maximum number of epochs to run')
+parser.add_argument('--accelerator', default='gpu', type=str,
+                        help='accelerator to use')
+parser.add_argument('--strategy', default='ddp', type=str,
+                        help='distributed strategy to use')
+args = parser.parse_args()
+
+# Some work needed for FSDP
+if args.strategy == "fsdp":
+    strategy = FSDPStrategy(
+        sharding_strategy="FULL_SHARD",  
+        cpu_offload=False
+    )
+if args.strategy == "fsdp1":
+    strategy = FSDPStrategy(
+        sharding_strategy="SHARD_GRAD_OP",  
+        cpu_offload=False
+    )    
+if args.strategy == "fsdp2":
+    strategy = FSDPStrategy(
+        sharding_strategy="NO_SHARD", 
+        cpu_offload=False
+    )
+else:
+    strategy = args.strategy 
+```
+
+and then passed to the Trainer object
+
+```python
+trainer = L.Trainer(
+  devices=args.gpus,
+  num_nodes=args.nodes,
+  max_epochs=args.epochs,
+  accelerator=args.accelerator,
+  strategy=strategy,
+)
+```
+
+## Exercises
 
 :::{exercise} Exercise Topic-1: imperative description of exercise
 Exercise text here.
@@ -207,8 +380,7 @@ Solution text here
 
 ## Summary
 
-A Summary of what you learned and why it might be useful.  Maybe a
-hint of what comes next.
+PyTorch Lightning can be used to produce more organised, reusable code to train neural network by clearly separating architecture, data and plumbing by taking advantage of `LightningModule`, `LightningDataModule` and `Trainer` respectively. Parallelising over several GPUs/nodes is made transparent and requires virtually no changes to the code.
 
 ## See also
 
