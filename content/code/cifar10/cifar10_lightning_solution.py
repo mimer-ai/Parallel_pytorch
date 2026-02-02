@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# train_cifar10_pl_solution.py
 
 import os
 import argparse
@@ -8,18 +9,22 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-import pytorch_lightning as L
-from pytorch_lightning.callbacks import (
+import lightning as L
+from lightning.pytorch.callbacks import (
     ModelCheckpoint,
     LearningRateMonitor,
     RichProgressBar,
 )
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.strategies import FSDPStrategy
+from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.strategies import FSDPStrategy
 
 from torchvision import datasets, transforms, models
 
-# Optional FSDP imports
+# Optional FSDP imports (no auto_wrap policy here)
+try:
+    from torch.distributed.fsdp import ShardingStrategy
+except Exception:
+    ShardingStrategy = None
 
 
 # -----------------------------
@@ -122,6 +127,10 @@ class LitResNet50(L.LightningModule):
 
         self.criterion = nn.CrossEntropyLoss()
 
+        # Fixed optimization hyperparameters (not exposed via CLI)
+        self._momentum = 0.9
+        self._weight_decay = 1e-4
+
     def forward(self, x):
         return self.model(x)
 
@@ -134,9 +143,15 @@ class LitResNet50(L.LightningModule):
         optimizer = optim.SGD(
             self.parameters(),
             lr=self.hparams.lr,
+            momentum=self._momentum,
+            weight_decay=self._weight_decay,
             nesterov=True,
         )
-        return optimizer
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"},
+        }
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -193,6 +208,10 @@ def build_strategy(name: str):
     if name == "ddp":
         return "ddp"
     if name.startswith("fsdp"):
+        if FSDPStrategy is None or ShardingStrategy is None:
+            raise RuntimeError(
+                "FSDP strategy requested but not available in this environment."
+            )
         if name == "fsdp_full":
             return FSDPStrategy(sharding_strategy=ShardingStrategy.FULL_SHARD)
         if name == "fsdp_shard_grad":
@@ -205,7 +224,7 @@ def build_strategy(name: str):
 # -----------------------------
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train ResNet50 on CIFAR-10 with PyTorch Lightning."
+        description="Train ResNet50 on CIFAR-10 with Lightning."
     )
     parser.add_argument("--data_dir", type=str, default="./data")
     parser.add_argument(
@@ -227,7 +246,6 @@ def parse_args():
         choices=["ddp", "fsdp_full", "fsdp_shard_grad"],
     )
     parser.add_argument("--max_epochs", type=int, default=90)
-    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--log_dir", type=str, default="./lightning_logs")
 
     return parser.parse_args()
@@ -235,7 +253,9 @@ def parse_args():
 
 def main():
     args = parse_args()
-    L.seed_everything(args.seed, workers=True)
+
+    # Fixed seed (not exposed via CLI)
+    L.seed_everything(42, workers=True)
 
     datamodule = CIFAR10DataModule(
         data_dir=args.data_dir,

@@ -83,6 +83,13 @@ flowers belonging to the Iris dataset based on a set of measurements
 (petal/sepal measurements). We will examine an example script creating this
 neural network one snippet at a time.
 
+The whole script can be found at {download}`code/iris/iris_example.py` and the
+submit script at {download}`code/iris/job.slurm`. The code assumes the iris
+dataset has been downloaded into a `./data` folder. There are scripts to
+download it included.
+For people running on Leonardo, all the code and data can be found at
+`/leonardo/pub/userexternal/ffiusco0/code`.
+
 ```python
 import torch 
 import torch.nn as nn 
@@ -307,7 +314,7 @@ model = IrisClassifier()
 trainer.fit(model, datamodule=dm)
 ```
 
-The whole script can be found at {download}`code/iris/iris_example.py` and the submit script at {download}`code/job.slurm`.
+The whole script can be found at {download}`code/iris/iris_with_datamodule.py` and the submit script at {download}`code/iris/job.slurm`.
 
 :::
 
@@ -371,15 +378,17 @@ trainer = L.Trainer(
 In the following example, a ResNet50 is trained on the Cifar10 image dataset to classify images into 10 categories. Fill in the `#TODO` lines and submit using the script at {download}`code/cifar10/job.slurm`. The submit script also allows you to test different parallelisation strategies.
 
 ```{literalinclude} code/cifar10/cifar10_lightning_skeleton.py
-:language python
+:language: python
 ```
 
 :::{solution}
 
 ```{literalinclude} code/cifar10/cifar10_lightning_solution.py
-:language python
+:language: python
 ```
 
+Try to run this example while changing parallelisation strategy/number of
+resources from the submit script!
 :::
 
 ::::

@@ -1,29 +1,39 @@
 #!/usr/bin/env python
+# train_cifar10_pl_student.py
+# PyTorch Lightning training on CIFAR-10 with a ResNet50 backbone.
+# Assumes dataset is present in ./data (download disabled) and optional weights at ./model_weights/resnet50_imagenet.pth
 
 import os
 import argparse
+from functools import partial
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-import pytorch_lightning as L
-from pytorch_lightning.callbacks import (
+import lightning as L
+from lightning.pytorch.callbacks import (
     ModelCheckpoint,
     LearningRateMonitor,
     RichProgressBar,
 )
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.strategies import FSDPStrategy
+from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.strategies import FSDPStrategy
 
 from torchvision import datasets, transforms, models
+
+# Optional FSDP imports (no auto_wrap policy here)
+try:
+    from torch.distributed.fsdp import ShardingStrategy
+except Exception:
+    ShardingStrategy = None
 
 
 # -----------------------------
 # DataModule for CIFAR-10
 # -----------------------------
-class CIFAR10DataModule(pl.LightningDataModule):
+class CIFAR10DataModule(L.LightningDataModule):
     def __init__(self, data_dir="./data", batch_size=256, num_workers=8):
         super().__init__()
         self.data_dir = data_dir
@@ -54,14 +64,17 @@ class CIFAR10DataModule(pl.LightningDataModule):
         )
 
     def setup(self, stage=None):
-        # Students: complete the dataset initialization using torchvision.datasets.CIFAR10
-        # Make sure download=False and root=self.data_dir
-        # TODO: initialize self.train_set and self.val_set
-        # Example:
-        # self.train_set = datasets.CIFAR10(root=self.data_dir, train=True, transform=self.train_transforms, download=False)
-        # self.val_set = datasets.CIFAR10(root=self.data_dir, train=False, transform=self.val_transforms, download=False)
-        raise NotImplementedError(
-            "TODO: Initialize CIFAR-10 datasets here (train_set and val_set)."
+        self.train_set = datasets.CIFAR10(
+            root=self.data_dir,
+            train=True,
+            transform=self.train_transforms,
+            download=False,
+        )
+        self.val_set = datasets.CIFAR10(
+            root=self.data_dir,
+            train=False,
+            transform=self.val_transforms,
+            download=False,
         )
 
     def train_dataloader(self):
@@ -77,7 +90,7 @@ class CIFAR10DataModule(pl.LightningDataModule):
 # -----------------------------
 # LightningModule for ResNet50 on CIFAR-10
 # -----------------------------
-class LitResNet50(pl.LightningModule):
+class LitResNet50(L.LightningModule):
     def __init__(
         self,
         num_classes=10,
@@ -87,11 +100,10 @@ class LitResNet50(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        # Students: build a torchvision.models.resnet50 backbone
-        # Replace the final fc with a Linear layer of out_features=num_classes
-        # Tip: model.fc.in_features gives the input dim for the classifier
-        # TODO: initialize self.model
-        self.model = None  # TODO: replace with a proper ResNet50
+        backbone = models.resnet50(weights=None)  # do not trigger internet download
+        in_features = backbone.fc.in_features
+        backbone.fc = nn.Linear(in_features, num_classes)
+        self.model = backbone
 
         # If weights exist, load them (ignore mismatched classifier with strict=False)
         if os.path.isfile(weights_path):
@@ -110,23 +122,72 @@ class LitResNet50(pl.LightningModule):
 
         self.criterion = nn.CrossEntropyLoss()
 
+        # Fixed (not CLI) optimization hyperparameters
+        self._momentum = 0.9
+        self._weight_decay = 1e-4
+
     def forward(self, x):
-        # TODO: forward pass through self.model
-        raise NotImplementedError("TODO: Implement forward()")
+        return self.model(x)
+
+    @staticmethod
+    def accuracy(logits, targets):
+        preds = torch.argmax(logits, dim=1)
+        return (preds == targets).float().mean()
 
     def configure_optimizers(self):
-        # TODO: return SGD optimizer with self.hparams.lr
-        optimizer = None
-        return optimizer
+        optimizer = optim.SGD(
+            self.parameters(),
+            lr=self.hparams.lr,
+            momentum=self._momentum,
+            weight_decay=self._weight_decay,
+            nesterov=True,
+        )
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"},
+        }
 
     def training_step(self, batch, batch_idx):
-        # TODO: unpack batch, forward pass, compute loss, compute accuracy
-        # log training loss and accuracy with self.log
-        raise NotImplementedError("TODO: Implement training_step()")
+        # TODO: unpack batch, forward pass, compute loss (hint: the criterion() method above returns the cross entropy loss)
+        acc = self.accuracy(logits, y)
+
+        self.log(
+            "train_loss",
+            loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=False,
+            sync_dist=True,
+        )
+        self.log(
+            "train_acc",
+            acc,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        # TODO: implement validation pass with accuracy metric and log 'val_loss' and 'val_acc'
-        raise NotImplementedError("TODO: Implement validation_step()")
+        # TODO: implement validation pass with accuracy metric as above
+        self.log(
+            "val_loss",
+            val_loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+            sync_dist=True,
+        )
+        self.log(
+            "val_acc",
+            val_acc,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
 
 
 # -----------------------------
@@ -135,15 +196,18 @@ class LitResNet50(pl.LightningModule):
 def build_strategy(name: str):
     """
     Map string to Lightning's strategy or FSDPStrategy.
-    Options (suggested):
+    Options:
       - 'ddp'
       - 'fsdp_full'
       - 'fsdp_shard_grad'
-      - 'fsdp_auto_wrap'
     """
     if name == "ddp":
         return "ddp"
     if name.startswith("fsdp"):
+        if FSDPStrategy is None or ShardingStrategy is None:
+            raise RuntimeError(
+                "FSDP strategy requested but not available in this environment."
+            )
         if name == "fsdp_full":
             return FSDPStrategy(sharding_strategy=ShardingStrategy.FULL_SHARD)
         if name == "fsdp_shard_grad":
@@ -156,7 +220,7 @@ def build_strategy(name: str):
 # -----------------------------
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train ResNet50 on CIFAR-10 with PyTorch Lightning."
+        description="Train ResNet50 on CIFAR-10 with Lightning."
     )
     parser.add_argument("--data_dir", type=str, default="./data")
     parser.add_argument(
@@ -178,7 +242,6 @@ def parse_args():
         choices=["ddp", "fsdp_full", "fsdp_shard_grad"],
     )
     parser.add_argument("--max_epochs", type=int, default=90)
-    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--log_dir", type=str, default="./lightning_logs")
 
     return parser.parse_args()
@@ -186,7 +249,9 @@ def parse_args():
 
 def main():
     args = parse_args()
-    pl.seed_everything(args.seed, workers=True)
+
+    # Fixed seed (not controlled by CLI)
+    L.seed_everything(42, workers=True)
 
     datamodule = CIFAR10DataModule(
         data_dir=args.data_dir,
@@ -203,14 +268,22 @@ def main():
     strategy = build_strategy(args.strategy)
 
     callbacks = [
-        # TODO: add a ModelCheckpoint that monitors 'val_acc' and saves top-1
-        # TODO: add a LearningRateMonitor(logging_interval="epoch")
-        # (Bonus) add a RichProgressBar
+        ModelCheckpoint(
+            dirpath=os.path.join(args.log_dir, args.strategy, "checkpoints"),
+            filename="epoch{epoch:03d}-valacc{val_acc:.4f}",
+            monitor="val_acc",
+            mode="max",
+            save_top_k=1,
+            save_last=True,
+            auto_insert_metric_name=False,
+        ),
+        LearningRateMonitor(logging_interval="epoch"),
+        RichProgressBar(),
     ]
 
     logger = TensorBoardLogger(save_dir=args.log_dir, name=args.strategy)
 
-    trainer = pl.Trainer(
+    trainer = L.Trainer(
         accelerator="gpu",
         devices=args.devices,
         num_nodes=args.num_nodes,
