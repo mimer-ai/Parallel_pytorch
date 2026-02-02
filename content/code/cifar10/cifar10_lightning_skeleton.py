@@ -12,14 +12,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-import lightning as L
-from lightning.pytorch.callbacks import (
+import pytorch_lightning as L
+from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     LearningRateMonitor,
-    RichProgressBar,
 )
-from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.strategies import FSDPStrategy
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.strategies import FSDPStrategy
 
 from torchvision import datasets, transforms, models
 
@@ -109,6 +108,8 @@ class LitResNet50(L.LightningModule):
         if os.path.isfile(weights_path):
             state = torch.load(weights_path, map_location="cpu")
             try:
+                # Remove fc layer from ImageNet since I have only 10 classes in the end
+                state = {k: v for k, v in state.items() if not k.startswith("fc.")}
                 missing, unexpected = self.model.load_state_dict(state, strict=False)
                 print(
                     f"[Info] Loaded weights from {weights_path}. Missing: {missing}, Unexpected: {unexpected}"
@@ -278,7 +279,6 @@ def main():
             auto_insert_metric_name=False,
         ),
         LearningRateMonitor(logging_interval="epoch"),
-        RichProgressBar(),
     ]
 
     logger = TensorBoardLogger(save_dir=args.log_dir, name=args.strategy)

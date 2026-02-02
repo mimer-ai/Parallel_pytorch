@@ -4,8 +4,8 @@ from torch.utils.data import TensorDataset, DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
-import lightning as L
-from lightning.pytorch.callbacks import Callback
+import pytorch_lightning as L
+from pytorch_ligthning.callbacks import Callback
 
 
 class TrainingLogger(Callback):
