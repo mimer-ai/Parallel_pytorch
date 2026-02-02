@@ -10,8 +10,8 @@
 #SBATCH --mem=0 # request the whole memory
 #SBATCH --time=0-01:00:00
 #SBATCH --partition=boost_usr_prod
-#SBATCH --account=tra25_castiel2
-#SBATCH --reservation=s_tra_castiel2
+#SBATCH --account=tra26_castiel2
+#SBATCH --reservation=s_tra_castiel3
 
 mkdir -p ./out
 
@@ -23,11 +23,9 @@ srun python3 cifar10_lightning.py --gpus=$SLURM_GPUS_PER_NODE --nodes=$SLURM_NNO
 srun python3 cifar10_lightning.py --gpus=$SLURM_GPUS_PER_NODE --nodes=$SLURM_NNODES --epochs=10 --batch_size=128 --strategy='fsdp1'
 srun python3 cifar10_lightning.py --gpus=$SLURM_GPUS_PER_NODE --nodes=$SLURM_NNODES --epochs=10 --batch_size=128 --strategy='fsdp2'
 
-
 srun python3 cifar10_lightning.py --gpus=$SLURM_GPUS_PER_NODE --nodes=$SLURM_NNODES --epochs=10 --batch_size=32 --strategy='ddp'
 srun python3 cifar10_lightning.py --gpus=$SLURM_GPUS_PER_NODE --nodes=$SLURM_NNODES --epochs=10 --batch_size=32 --strategy='fsdp'
 srun python3 cifar10_lightning.py --gpus=$SLURM_GPUS_PER_NODE --nodes=$SLURM_NNODES --epochs=10 --batch_size=32 --strategy='fsdp1'
 srun python3 cifar10_lightning.py --gpus=$SLURM_GPUS_PER_NODE --nodes=$SLURM_NNODES --epochs=10 --batch_size=32 --strategy='fsdp2'
-
 
 exit

@@ -6,7 +6,6 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=0 # request the whole memory
 #SBATCH --time=0-00:10:00
 #SBATCH --partition=boost_usr_prod
 #SBATCH --account=tra26_castiel2
