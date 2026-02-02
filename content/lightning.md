@@ -393,6 +393,30 @@ resources from the submit script!
 
 ::::
 
+::::{exercise} Bonus: add logging of wall time per epoch
+
+You can create a custom callback to plot time per epoch to compare the different approaches.
+*Hint: you can use the `on_train_epoch_start()` and `on_train_epoch_end()` hooks*.
+
+:::{solution}
+
+```python
+class EpochTimingCallback(L.Callback):
+    def on_train_epoch_start(self, trainer, pl_module):
+        self.epoch_start_time = time.time()
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        duration = time.time() - self.epoch_start_time
+        trainer.logger.log_metrics({"epoch_time_sec": duration}, step=trainer.current_epoch)
+        print(f"[Timing] Epoch {trainer.current_epoch} took {duration:.2f} seconds")
+
+```
+
+Remember to add this to the list of callbacks and to import the `time` module!
+:::
+
+::::
+
 ## Summary
 
 PyTorch Lightning can be used to produce more organised, reusable code to train neural network by clearly separating architecture, data and plumbing by taking advantage of `LightningModule`, `LightningDataModule` and `Trainer` respectively. Parallelising over several GPUs/nodes is made transparent and requires virtually no changes to the code.
