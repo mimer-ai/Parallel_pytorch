@@ -79,10 +79,12 @@ class CIFAR10DataModule(L.LightningDataModule):
     def train_dataloader(self):
         # TODO: return DataLoader for self.train_set with shuffle=True
         # Use batch_size=self.batch_size and num_workers=self.num_workers
+        # OBS: remember to pass pin_memory=False to the dataloader
         raise NotImplementedError("TODO: Implement train_dataloader()")
 
     def val_dataloader(self):
         # TODO: return DataLoader for self.val_set with shuffle=False
+        # OBS: remember to pass pin_memory=False to the dataloader
         raise NotImplementedError("TODO: Implement val_dataloader()")
 
 
